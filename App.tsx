@@ -20,13 +20,10 @@ ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
 const calculateCapTableSnapshot = (
   currentShareholders: Shareholder[],
-  appliedFundingRounds: FundingRound[], // Past rounds already incorporated into currentShareholders
-  potentialNewRound?: PotentialNewRoundDetails // For simulation
+  appliedFundingRounds: FundingRound[], 
+  potentialNewRound?: PotentialNewRoundDetails
 ): CapTableSnapshot => {
   
-  // 1. Create a working copy of shareholders based on `currentShareholders`
-  // These shareholders already reflect the state *after* all `appliedFundingRounds`
-  // (e.g., ESOP increases from past rounds, investors from past rounds are already in `currentShareholders`)
   let workingProcessedShareholders: ProcessedShareholder[] = currentShareholders.map(sh => {
     const holdings: ShareHolding[] = [];
     if (sh.sharesClassA > 0) holdings.push({ shareClass: ShareClass.A, count: sh.sharesClassA });
@@ -42,19 +39,17 @@ const calculateCapTableSnapshot = (
 
   let roundPreviewDetailsOutput: CapTableSnapshot['roundPreviewDetails'] | undefined = undefined;
 
-  // 2. Simulate potential new round if details are provided
   if (potentialNewRound) {
     roundPreviewDetailsOutput = {
       name: potentialNewRound.name,
       totalInvestment: potentialNewRound.totalInvestment,
-      preMoneyValuation: 0, // Will be calculated
-      postMoneyValuation: 0, // Will be calculated
-      sharesIssuedToNewInvestors: 0, // Will be calculated
-      sharePrice: 0, // Will be calculated
+      preMoneyValuation: 0,
+      postMoneyValuation: 0,
+      sharesIssuedToNewInvestors: 0,
+      sharePrice: 0,
       optionPoolIncreaseShares: potentialNewRound.optionPoolIncreaseShares || 0,
     };
 
-    // 2a. Apply ESOP increase for *this specific potential round*
     const optionPoolIncreaseInSim = potentialNewRound.optionPoolIncreaseShares || 0;
     if (optionPoolIncreaseInSim > 0) {
       let esop = workingProcessedShareholders.find(s => s.id === EMPLOYEE_POOL_ID);
@@ -63,7 +58,6 @@ const calculateCapTableSnapshot = (
         if (esopHoldingA) esopHoldingA.count += optionPoolIncreaseInSim;
         else esop.holdings.push({ shareClass: ShareClass.A, count: optionPoolIncreaseInSim });
       } else {
-        // This case should ideally not happen if ESOP is always ensured
         workingProcessedShareholders.push({
           id: EMPLOYEE_POOL_ID, name: EMPLOYEE_POOL_NAME, category: ShareholderCategory.EMPLOYEE_POOL,
           holdings: [{ shareClass: ShareClass.A, count: optionPoolIncreaseInSim }],
@@ -72,12 +66,9 @@ const calculateCapTableSnapshot = (
       }
     }
 
-    // 2b. Calculate total shares *before* adding new investors for this round
-    // This includes the ESOP top-up from *this* round.
     const totalExistingSharesBeforeNewInvestors = workingProcessedShareholders.reduce((acc, sh) => 
         acc + sh.holdings.reduce((hAcc, h) => hAcc + h.count, 0), 0);
 
-    // 2c. Determine valuations and shares to issue
     let preMoneyValuation = potentialNewRound.preMoneyValuation || 0;
     let postMoneyValuation = 0;
     let sharesIssuedToNewInvestors = 0;
@@ -85,12 +76,6 @@ const calculateCapTableSnapshot = (
     if (potentialNewRound.valuationType === 'preMoney' && preMoneyValuation > 0) {
       postMoneyValuation = preMoneyValuation + potentialNewRound.totalInvestment;
       if (preMoneyValuation > 0 && totalExistingSharesBeforeNewInvestors > 0) {
-         // New investors get X% of post-money. X = Investment / PostMoney.
-         // So they get (Investment / PostMoney) * TotalPostMoneyShares.
-         // TotalPostMoneyShares = TotalExistingShares / (1 - Investment/PostMoney)
-         // SharesIssued = (Investment/PostMoney) * (TotalExistingShares / (1 - Investment/PostMoney))
-         // SharesIssued = Investment * TotalExistingShares / (PostMoney - Investment)
-         // SharesIssued = Investment * TotalExistingShares / PreMoney
         sharesIssuedToNewInvestors = Math.round((potentialNewRound.totalInvestment * totalExistingSharesBeforeNewInvestors) / preMoneyValuation);
       }
     } else if (potentialNewRound.valuationType === 'percentage' && potentialNewRound.percentageAcquired && potentialNewRound.percentageAcquired > 0 && potentialNewRound.percentageAcquired < 100) {
@@ -98,8 +83,6 @@ const calculateCapTableSnapshot = (
       if (potentialNewRound.totalInvestment > 0) {
         postMoneyValuation = potentialNewRound.totalInvestment / percAcquiredDecimal;
         preMoneyValuation = postMoneyValuation - potentialNewRound.totalInvestment;
-        // S_new / (S_existing + S_new) = Y
-        // S_new = Y * S_existing / (1 - Y)
         sharesIssuedToNewInvestors = Math.round((percAcquiredDecimal * totalExistingSharesBeforeNewInvestors) / (1 - percAcquiredDecimal));
       }
     }
@@ -109,14 +92,10 @@ const calculateCapTableSnapshot = (
     roundPreviewDetailsOutput.sharesIssuedToNewInvestors = sharesIssuedToNewInvestors;
     roundPreviewDetailsOutput.sharePrice = sharesIssuedToNewInvestors > 0 ? potentialNewRound.totalInvestment / sharesIssuedToNewInvestors : 0;
 
-
-    // 2d. Add new investors as a single entity for preview OR individual investors
     if (sharesIssuedToNewInvestors > 0 && potentialNewRound.investors.length > 0) {
-      // For simplicity in preview, can aggregate or show first investor.
-      // When actually adding round, investors are added individually to main shareholders list.
        const previewInvestorEntityName = `New Investors (${potentialNewRound.name})`;
        workingProcessedShareholders.push({
-         id: 'new-investors-preview-' + nanoid(5), // Unique ID for preview
+         id: 'new-investors-preview-' + nanoid(5), 
          name: previewInvestorEntityName,
          category: ShareholderCategory.INVESTOR,
          holdings: [{ shareClass: ShareClass.A, count: sharesIssuedToNewInvestors }],
@@ -125,7 +104,6 @@ const calculateCapTableSnapshot = (
     }
   }
 
-  // 3. Final calculations on the (potentially simulated) shareholder list
   let totalClassAShares = 0;
   let totalClassBShares = 0;
 
@@ -145,7 +123,7 @@ const calculateCapTableSnapshot = (
     const shareholderVotingPower = sh.holdings.reduce((sum, h) => sum + h.count * VOTES_PER_SHARE[h.shareClass], 0);
     totalVotingPower += shareholderVotingPower;
     return { ...sh, totalShares: shareholderTotalShares, ownershipPercentage, votingPower: shareholderVotingPower, votingPercentage: 0 };
-  }).filter(sh => sh.totalShares > 0.00001); // Filter out effectively zero share holders
+  }).filter(sh => sh.totalShares > 0.00001); 
 
   finalProcessedShareholders.forEach(sh => {
     sh.votingPercentage = totalVotingPower > 0 ? (sh.votingPower / totalVotingPower) * 100 : 0;
@@ -184,32 +162,62 @@ const App: React.FC = () => {
   const [newRoundDataForConfirmation, setNewRoundDataForConfirmation] = useState<NewFundingRoundFormInput | null>(null);
 
   const [isReadOnly, setIsReadOnly] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareableLink, setShareableLink] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
+  // Load data from localStorage and initialize read-only mode on mount
   useEffect(() => {
+    let initialShareholders: Shareholder[] = [];
+    try {
+      const storedShareholders = localStorage.getItem('capTableShareholders');
+      if (storedShareholders) {
+        initialShareholders = JSON.parse(storedShareholders);
+      }
+    } catch (e) {
+      console.error("Error parsing shareholders from localStorage", e);
+    }
+
+    if (!initialShareholders.find(sh => sh.id === EMPLOYEE_POOL_ID)) {
+      const esopIndex = initialShareholders.findIndex(sh => sh.id === EMPLOYEE_POOL_ID);
+      if (esopIndex !== -1) {
+          initialShareholders.splice(esopIndex, 1);
+      }
+      initialShareholders.push({
+        id: EMPLOYEE_POOL_ID,
+        name: EMPLOYEE_POOL_NAME,
+        category: ShareholderCategory.EMPLOYEE_POOL,
+        sharesClassA: 0,
+        sharesClassB: 0,
+      });
+    }
+    setShareholders(initialShareholders);
+
+    try {
+      const storedFundingRounds = localStorage.getItem('capTableFundingRounds');
+      if (storedFundingRounds) {
+        setFundingRounds(JSON.parse(storedFundingRounds));
+      } else {
+        setFundingRounds([]);
+      }
+    } catch (e) {
+      console.error("Error parsing funding rounds from localStorage", e);
+      setFundingRounds([]);
+    }
+
     const queryParams = new URLSearchParams(window.location.search);
     setIsReadOnly(queryParams.get('mode') === 'view');
   }, []);
 
-
-  // Ensure ESOP is always present
+  // Save shareholders to localStorage whenever they change
   useEffect(() => {
-    setShareholders(prev => {
-      if (!prev.find(sh => sh.id === EMPLOYEE_POOL_ID)) {
-        return [
-          ...prev.filter(s => s.id !== EMPLOYEE_POOL_ID), 
-          {
-            id: EMPLOYEE_POOL_ID,
-            name: EMPLOYEE_POOL_NAME,
-            category: ShareholderCategory.EMPLOYEE_POOL,
-            sharesClassA: 0, 
-            sharesClassB: 0, 
-          }
-        ];
-      }
-      return prev;
-    });
-  }, []);
+    localStorage.setItem('capTableShareholders', JSON.stringify(shareholders));
+  }, [shareholders]);
 
+  // Save fundingRounds to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('capTableFundingRounds', JSON.stringify(fundingRounds));
+  }, [fundingRounds]);
 
   useEffect(() => {
     setCurrentCapTable(calculateCapTableSnapshot(shareholders, fundingRounds));
@@ -274,7 +282,7 @@ const App: React.FC = () => {
   };
   
   const handlePreviewRound = (roundInput: NewFundingRoundFormInput) => {
-    if (isReadOnly) return; // Should not be callable if form cannot open, but good check
+    if (isReadOnly) return;
     const totalInvestment = roundInput.investors.reduce((sum, inv) => sum + inv.investmentAmount, 0);
     const potentialRoundDetails: PotentialNewRoundDetails = {
         name: roundInput.name,
@@ -388,7 +396,6 @@ const App: React.FC = () => {
     const actualSharesAdded = newRound.investors.reduce((sum, inv) => sum + inv.sharesAcquired, 0);
     newRound.sharesIssuedToNewInvestors = actualSharesAdded;
 
-
     setShareholders(updatedShareholders);
 
     if (editingRoundId) {
@@ -438,6 +445,24 @@ const App: React.FC = () => {
       alert("Only the most recent funding round can be deleted through this interface.");
     }
   };
+
+  const handleOpenShareModal = () => {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('mode', 'view');
+    setShareableLink(currentUrl.toString());
+    setLinkCopied(false);
+    setIsShareModalOpen(true);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(shareableLink).then(() => {
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000); // Reset after 2 seconds
+    }).catch(err => {
+        console.error('Failed to copy link: ', err);
+        alert('Failed to copy link. Please copy it manually.');
+    });
+  };
   
   const ownershipData = useMemo(() => {
     if (!currentCapTable) return { labels: [], datasets: [] };
@@ -469,11 +494,24 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold text-indigo-700">
             CapTable Pro
           </h1>
-          {isReadOnly && (
-            <span className="px-3 py-1 text-sm font-semibold text-orange-700 bg-orange-100 rounded-full">
-              Read-Only Mode
-            </span>
-          )}
+          <div className="flex items-center space-x-3">
+            {isReadOnly && (
+              <span className="px-3 py-1 text-sm font-semibold text-orange-700 bg-orange-100 rounded-full">
+                Read-Only Mode
+              </span>
+            )}
+            <button
+              onClick={handleOpenShareModal}
+              className="px-4 py-2 text-sm font-medium text-indigo-600 bg-indigo-100 hover:bg-indigo-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors flex items-center"
+              title="Share CapTable (Read-Only)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-1.5">
+                <path d="M13 4.5a2.5 2.5 0 11.702 4.289l-4.018 2.316a2.5 2.5 0 11-.3-.518l4.019-2.316A2.5 2.5 0 0113 4.5zM6.5 12a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM13 15.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
+                <path d="M12.982 5.211l-4.018 2.316A2.522 2.522 0 009 7.5a2.5 2.5 0 10-1.72 4.298l4.019 2.316a2.5 2.5 0 10.299-.518L7.562 11.28A2.522 2.522 0 007 11.5a2.5 2.5 0 101.72-4.298L12.74 4.886a2.5 2.5 0 10.242.325z" />
+              </svg>
+              Share
+            </button>
+          </div>
         </div>
       </header>
 
@@ -504,7 +542,7 @@ const App: React.FC = () => {
             />
         </section>
 
-        {currentCapTable && currentCapTable.shareholders.length > 0 && (
+        {currentCapTable && currentCapTable.shareholders.length > (currentCapTable.shareholders.find(sh => sh.id === EMPLOYEE_POOL_ID && sh.totalShares === 0) ? 1 : 0) && (
             <section id="visualizations" className="bg-white p-6 rounded-xl shadow-lg">
                 <h2 className="text-2xl font-semibold text-slate-700 mb-6 text-center">Ownership & Voting Distribution</h2>
                 <div className="grid md:grid-cols-2 gap-8">
@@ -574,14 +612,14 @@ const App: React.FC = () => {
                             setEditingRoundId(null);
                         }}
                         initialData={newRoundDataForConfirmation} 
-                        existingShareholdersCount={shareholders.filter(s => s.id !== EMPLOYEE_POOL_ID).length}
+                        existingShareholdersCount={shareholders.filter(s => s.id !== EMPLOYEE_POOL_ID && (s.sharesClassA > 0 || s.sharesClassB > 0)).length}
                         totalExistingShares={currentCapTable?.totalSharesOverall || 0}
                     />
                 </Modal>
              </>
         )}
 
-        <Modal // Preview modal can still be shown in read-only if triggered by a deep link or future feature, but confirmation is blocked
+        <Modal 
             isOpen={isRoundPreviewModalOpen}
             onClose={() => {
                 setIsRoundPreviewModalOpen(false);
@@ -608,14 +646,13 @@ const App: React.FC = () => {
                         snapshot={previewCapTableData}
                         title="Cap Table After This Round (Preview)"
                         isPreview={true}
-                        isReadOnly={isReadOnly} // Pass read-only to preview as well
+                        isReadOnly={isReadOnly} 
                     />
                     <div className="flex justify-end space-x-3 pt-4">
                         <button
                             type="button"
                             onClick={() => {
                                 setIsRoundPreviewModalOpen(false);
-                                // if (!isReadOnly) setIsFundingRoundModalOpen(true); // Optionally re-open form if not read-only
                             }}
                             className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300"
                         >
@@ -633,6 +670,36 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
+        </Modal>
+
+        <Modal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          title="Share CapTable (Read-Only)"
+          size="lg"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Share this link with others to give them read-only access to the current cap table:
+            </p>
+            <input
+              type="text"
+              value={shareableLink}
+              readOnly
+              className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-700 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              onClick={handleCopyLink}
+              className={`w-full px-4 py-2.5 text-sm font-medium text-white rounded-lg shadow-sm transition-colors duration-150 ease-in-out
+                ${linkCopied 
+                  ? 'bg-green-500 hover:bg-green-600 focus:ring-green-400' 
+                  : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'}
+                focus:outline-none focus:ring-2 focus:ring-offset-2`}
+            >
+              {linkCopied ? 'Copied!' : 'Copy Link'}
+            </button>
+          </div>
         </Modal>
 
       </main>
