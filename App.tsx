@@ -178,10 +178,17 @@ const App: React.FC = () => {
   const [editingShareholder, setEditingShareholder] = useState<Shareholder | null>(null);
   
   const [isFundingRoundModalOpen, setIsFundingRoundModalOpen] = useState(false);
-  const [editingRoundId, setEditingRoundId] = useState<string | null>(null); // Store ID of round being edited
+  const [editingRoundId, setEditingRoundId] = useState<string | null>(null); 
   const [isRoundPreviewModalOpen, setIsRoundPreviewModalOpen] = useState(false);
   const [previewCapTableData, setPreviewCapTableData] = useState<CapTableSnapshot | null>(null);
   const [newRoundDataForConfirmation, setNewRoundDataForConfirmation] = useState<NewFundingRoundFormInput | null>(null);
+
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    setIsReadOnly(queryParams.get('mode') === 'view');
+  }, []);
 
 
   // Ensure ESOP is always present
@@ -189,13 +196,13 @@ const App: React.FC = () => {
     setShareholders(prev => {
       if (!prev.find(sh => sh.id === EMPLOYEE_POOL_ID)) {
         return [
-          ...prev.filter(s => s.id !== EMPLOYEE_POOL_ID), // remove if accidentally added differently
+          ...prev.filter(s => s.id !== EMPLOYEE_POOL_ID), 
           {
             id: EMPLOYEE_POOL_ID,
             name: EMPLOYEE_POOL_NAME,
             category: ShareholderCategory.EMPLOYEE_POOL,
             sharesClassA: 0, 
-            sharesClassB: 0, // ESOP is Class A only
+            sharesClassB: 0, 
           }
         ];
       }
@@ -205,14 +212,11 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    // Recalculate current cap table whenever shareholders or funding rounds change
-    // Note: calculateCapTableSnapshot itself doesn't use appliedFundingRounds to modify shareholders directly,
-    // it assumes 'shareholders' state already reflects past rounds.
-    // 'appliedFundingRounds' could be used for historical tracking or more complex rollback logic (not implemented).
     setCurrentCapTable(calculateCapTableSnapshot(shareholders, fundingRounds));
   }, [shareholders, fundingRounds]);
 
   const handleAddOrUpdateShareholder = (data: NewShareholderInput) => {
+    if (isReadOnly) return;
     if (editingShareholder) {
       setShareholders(prev => prev.map(sh => sh.id === editingShareholder.id ? { ...sh, ...data, sharesClassB: data.category === ShareholderCategory.FOUNDER ? data.sharesClassB : 0 } : sh));
       setEditingShareholder(null);
@@ -228,6 +232,7 @@ const App: React.FC = () => {
   };
 
   const handleEditShareholder = (shareholderId: string) => {
+    if (isReadOnly) return;
     const shareholderToEdit = shareholders.find(sh => sh.id === shareholderId);
     if (shareholderToEdit) {
       setEditingShareholder(shareholderToEdit);
@@ -236,6 +241,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteShareholder = (shareholderId: string) => {
+    if (isReadOnly) return;
     if(shareholderId === EMPLOYEE_POOL_ID) {
         alert("The Employee Option Pool cannot be deleted directly.");
         return;
@@ -245,11 +251,10 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Funding Round Handlers ---
   const handleOpenFundingRoundModal = (roundIdToEdit?: string) => {
+    if (isReadOnly) return;
     if (roundIdToEdit && fundingRounds.length > 0 && fundingRounds[fundingRounds.length - 1].id === roundIdToEdit) {
       const roundToEdit = fundingRounds[fundingRounds.length -1];
-      // Convert FundingRound back to NewFundingRoundFormInput shape
       const formInput: NewFundingRoundFormInput = {
         name: roundToEdit.name,
         date: roundToEdit.date,
@@ -259,16 +264,17 @@ const App: React.FC = () => {
         investors: roundToEdit.investors.map(inv => ({ tempId: inv.id, name: inv.name, investmentAmount: inv.investmentAmount})),
         optionPoolIncrease: roundToEdit.optionPoolIncreaseShares,
       };
-      setNewRoundDataForConfirmation(formInput); // Populate form
+      setNewRoundDataForConfirmation(formInput); 
       setEditingRoundId(roundIdToEdit);
     } else {
-      setNewRoundDataForConfirmation(null); // Clear for new round
+      setNewRoundDataForConfirmation(null); 
       setEditingRoundId(null);
     }
     setIsFundingRoundModalOpen(true);
   };
   
   const handlePreviewRound = (roundInput: NewFundingRoundFormInput) => {
+    if (isReadOnly) return; // Should not be callable if form cannot open, but good check
     const totalInvestment = roundInput.investors.reduce((sum, inv) => sum + inv.investmentAmount, 0);
     const potentialRoundDetails: PotentialNewRoundDetails = {
         name: roundInput.name,
@@ -283,19 +289,17 @@ const App: React.FC = () => {
     
     const preview = calculateCapTableSnapshot(shareholders, fundingRounds, potentialRoundDetails);
     setPreviewCapTableData(preview);
-    setNewRoundDataForConfirmation(roundInput); // Keep data for final confirmation
+    setNewRoundDataForConfirmation(roundInput); 
     setIsRoundPreviewModalOpen(true);
-    setIsFundingRoundModalOpen(false); // Close form modal if open
+    setIsFundingRoundModalOpen(false); 
   };
 
   const handleConfirmAndAddRound = () => {
-    if (!newRoundDataForConfirmation) return;
+    if (isReadOnly || !newRoundDataForConfirmation) return;
 
     const roundInput = newRoundDataForConfirmation;
     const totalInvestment = roundInput.investors.reduce((sum, inv) => sum + inv.investmentAmount, 0);
 
-    // Re-run calculation to get final numbers for the round object
-    // This is similar to preview but without adding dummy shareholders
     const tempSnapshotDetailsForRound = calculateCapTableSnapshot(shareholders, fundingRounds, {
         name: roundInput.name,
         date: roundInput.date,
@@ -303,9 +307,9 @@ const App: React.FC = () => {
         preMoneyValuation: roundInput.valuationType === 'preMoney' ? roundInput.preMoneyValuation : undefined,
         percentageAcquired: roundInput.valuationType === 'percentage' ? roundInput.percentageAcquired : undefined,
         totalInvestment: totalInvestment,
-        investors: roundInput.investors, // Pass investors for structure
+        investors: roundInput.investors, 
         optionPoolIncreaseShares: roundInput.optionPoolIncrease,
-    }).roundPreviewDetails; // We need the calculated values from the simulation pass
+    }).roundPreviewDetails; 
 
     if (!tempSnapshotDetailsForRound) {
         console.error("Failed to calculate round details for confirmation.");
@@ -327,12 +331,11 @@ const App: React.FC = () => {
         sharePrice: tempSnapshotDetailsForRound.sharePrice,
         optionPoolIncreaseShares: roundInput.optionPoolIncrease || 0,
         percentageAcquiredByNewInvestors: roundInput.valuationType === 'percentage' ? roundInput.percentageAcquired : undefined,
-        investors: [], // Will be populated below
+        investors: [], 
     };
 
     let updatedShareholders = [...shareholders];
 
-    // 1. Update ESOP shares if applicable
     if (newRound.optionPoolIncreaseShares > 0) {
         updatedShareholders = updatedShareholders.map(sh => {
             if (sh.id === EMPLOYEE_POOL_ID) {
@@ -342,14 +345,11 @@ const App: React.FC = () => {
         });
     }
     
-    // 2. Add new investors as shareholders
-    // Distribute sharesIssuedToNewInvestors proportionally to their investment amount in this round.
     if (newRound.sharesIssuedToNewInvestors > 0 && totalInvestment > 0) {
         roundInput.investors.forEach(formInvestor => {
             const proportion = formInvestor.investmentAmount / totalInvestment;
             const sharesForThisInvestor = Math.round(newRound.sharesIssuedToNewInvestors * proportion);
             if (sharesForThisInvestor > 0) {
-                 // Check if investor exists, if so, update. Otherwise, add.
                 const existingInvestor = updatedShareholders.find(sh => sh.name.toLowerCase() === formInvestor.name.toLowerCase() && sh.category === ShareholderCategory.INVESTOR);
                 if (existingInvestor) {
                     updatedShareholders = updatedShareholders.map(sh => 
@@ -358,7 +358,7 @@ const App: React.FC = () => {
                         : sh
                     );
                     newRound.investors.push({
-                        id: formInvestor.tempId, // or existingInvestor.id if preferred
+                        id: formInvestor.tempId, 
                         shareholderId: existingInvestor.id,
                         name: formInvestor.name,
                         investmentAmount: formInvestor.investmentAmount,
@@ -371,10 +371,10 @@ const App: React.FC = () => {
                         name: formInvestor.name,
                         category: ShareholderCategory.INVESTOR,
                         sharesClassA: sharesForThisInvestor,
-                        sharesClassB: 0, // Investors get Class A
+                        sharesClassB: 0, 
                     });
                     newRound.investors.push({
-                        id: formInvestor.tempId, // or newInvestorId
+                        id: formInvestor.tempId, 
                         shareholderId: newInvestorId,
                         name: formInvestor.name,
                         investmentAmount: formInvestor.investmentAmount,
@@ -385,7 +385,6 @@ const App: React.FC = () => {
         });
     }
     
-    // Adjust total shares issued if rounding caused minor discrepancies
     const actualSharesAdded = newRound.investors.reduce((sum, inv) => sum + inv.sharesAcquired, 0);
     newRound.sharesIssuedToNewInvestors = actualSharesAdded;
 
@@ -406,13 +405,12 @@ const App: React.FC = () => {
   };
 
   const handleDeleteFundingRound = (roundId: string) => {
-    // ONLY allow deleting the LATEST round for simplicity
+    if (isReadOnly) return;
     if (fundingRounds.length > 0 && fundingRounds[fundingRounds.length - 1].id === roundId) {
       if (window.confirm("Are you sure you want to delete the latest funding round? This action cannot be undone easily and will revert shareholder changes from this round.")) {
         const roundToDelete = fundingRounds[fundingRounds.length - 1];
         let revertedShareholders = [...shareholders];
 
-        // Revert ESOP increase
         if (roundToDelete.optionPoolIncreaseShares > 0) {
           revertedShareholders = revertedShareholders.map(sh => 
             sh.id === EMPLOYEE_POOL_ID 
@@ -421,18 +419,15 @@ const App: React.FC = () => {
           );
         }
 
-        // Revert shares from investors of this round
         roundToDelete.investors.forEach(invInRound => {
           if (invInRound.shareholderId) {
              revertedShareholders = revertedShareholders.map(sh => {
                 if (sh.id === invInRound.shareholderId) {
                     const newShares = Math.max(0, sh.sharesClassA - invInRound.sharesAcquired);
-                    // If this investor only existed due to this round, and shares become 0, consider removing them or marking inactive
-                    // For now, just reduce shares. If shares are 0, they might get filtered by CapTableDisplay logic.
                     return { ...sh, sharesClassA: newShares }; 
                 }
                 return sh;
-            }).filter(sh => !(sh.id === invInRound.shareholderId && sh.sharesClassA <= 0 && sh.sharesClassB <= 0 && sh.category === ShareholderCategory.INVESTOR && !fundingRounds.slice(0, -1).some(fr => fr.investors.some(i => i.shareholderId === sh.id)) )); // Remove investor if they became 0 and were new in this round
+            }).filter(sh => !(sh.id === invInRound.shareholderId && sh.sharesClassA <= 0 && sh.sharesClassB <= 0 && sh.category === ShareholderCategory.INVESTOR && !fundingRounds.slice(0, -1).some(fr => fr.investors.some(i => i.shareholderId === sh.id)) )); 
           }
         });
         
@@ -451,7 +446,7 @@ const App: React.FC = () => {
         datasets: [{
             label: 'Ownership %',
             data: currentCapTable.shareholders.map(sh => sh.ownershipPercentage),
-        }] // PieChartComponent will apply colors
+        }] 
     };
   }, [currentCapTable]);
 
@@ -462,7 +457,7 @@ const App: React.FC = () => {
         datasets: [{
             label: 'Voting Power %',
             data: currentCapTable.shareholders.map(sh => sh.votingPercentage),
-        }] // PieChartComponent will apply colors
+        }] 
     };
  }, [currentCapTable]);
 
@@ -474,6 +469,11 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-bold text-indigo-700">
             CapTable Pro
           </h1>
+          {isReadOnly && (
+            <span className="px-3 py-1 text-sm font-semibold text-orange-700 bg-orange-100 rounded-full">
+              Read-Only Mode
+            </span>
+          )}
         </div>
       </header>
 
@@ -482,22 +482,25 @@ const App: React.FC = () => {
         <section id="shareholder-management" className="bg-white p-6 rounded-xl shadow-lg">
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-semibold text-slate-700">Shareholders</h2>
-                <button
-                    onClick={() => { setEditingShareholder(null); setIsShareholderModalOpen(true); }}
-                    className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors flex items-center"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-2">
-                        <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                    </svg>
-                    Add Shareholder
-                </button>
+                {!isReadOnly && (
+                    <button
+                        onClick={() => { setEditingShareholder(null); setIsShareholderModalOpen(true); }}
+                        className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors flex items-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-2">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                        </svg>
+                        Add Shareholder
+                    </button>
+                )}
             </div>
             <CapTableDisplay
                 snapshot={currentCapTable}
                 title="Current Cap Table"
                 onEditShareholder={handleEditShareholder}
                 onDeleteShareholder={handleDeleteShareholder}
-                isShareholderManagementEnabled={true}
+                isShareholderManagementEnabled={!isReadOnly}
+                isReadOnly={isReadOnly}
             />
         </section>
 
@@ -518,65 +521,71 @@ const App: React.FC = () => {
         <section id="funding-rounds-management" className="bg-white p-6 rounded-xl shadow-lg">
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-semibold text-slate-700">Funding Rounds</h2>
-                <button
-                    onClick={() => handleOpenFundingRoundModal()}
-                    className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors flex items-center"
-                >
-                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-2">
-                     <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                   </svg>
-                    Add Funding Round
-                </button>
+                {!isReadOnly && (
+                    <button
+                        onClick={() => handleOpenFundingRoundModal()}
+                        className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors flex items-center"
+                    >
+                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 mr-2">
+                         <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                       </svg>
+                        Add Funding Round
+                    </button>
+                )}
             </div>
              <FundingHistoryDisplay 
                 rounds={fundingRounds} 
-                onEdit={(roundId) => handleOpenFundingRoundModal(roundId)} // Only latest editable for now
-                onDelete={handleDeleteFundingRound} // Only latest deletable
+                onEdit={(roundId) => handleOpenFundingRoundModal(roundId)} 
+                onDelete={handleDeleteFundingRound}
+                isReadOnly={isReadOnly}
             />
         </section>
 
-        <Modal
-          isOpen={isShareholderModalOpen}
-          onClose={() => { setIsShareholderModalOpen(false); setEditingShareholder(null); }}
-          title={editingShareholder ? "Edit Shareholder" : "Add New Shareholder"}
-          size="xl"
-        >
-          <ShareholderForm
-            onSubmit={handleAddOrUpdateShareholder}
-            onCancel={() => { setIsShareholderModalOpen(false); setEditingShareholder(null); }}
-            initialData={editingShareholder}
-          />
-        </Modal>
+        {!isReadOnly && (
+            <>
+                <Modal
+                  isOpen={isShareholderModalOpen}
+                  onClose={() => { setIsShareholderModalOpen(false); setEditingShareholder(null); }}
+                  title={editingShareholder ? "Edit Shareholder" : "Add New Shareholder"}
+                  size="xl"
+                >
+                  <ShareholderForm
+                    onSubmit={handleAddOrUpdateShareholder}
+                    onCancel={() => { setIsShareholderModalOpen(false); setEditingShareholder(null); }}
+                    initialData={editingShareholder}
+                  />
+                </Modal>
 
-        <Modal
-            isOpen={isFundingRoundModalOpen}
-            onClose={() => {
-                setIsFundingRoundModalOpen(false);
-                setNewRoundDataForConfirmation(null); // Clear form data on close
-                setEditingRoundId(null);
-            }}
-            title={editingRoundId ? "Edit Funding Round" : "Add / Simulate Funding Round"}
-            size="3xl"
-        >
-            <FundingRoundForm
-                onSubmit={handlePreviewRound} // Submit first goes to preview
-                onCancel={() => {
-                    setIsFundingRoundModalOpen(false);
-                    setNewRoundDataForConfirmation(null);
-                    setEditingRoundId(null);
-                }}
-                initialData={newRoundDataForConfirmation} // Used for pre-filling if editing
-                existingShareholdersCount={shareholders.filter(s => s.id !== EMPLOYEE_POOL_ID).length}
-                totalExistingShares={currentCapTable?.totalSharesOverall || 0}
-            />
-        </Modal>
+                <Modal
+                    isOpen={isFundingRoundModalOpen}
+                    onClose={() => {
+                        setIsFundingRoundModalOpen(false);
+                        setNewRoundDataForConfirmation(null); 
+                        setEditingRoundId(null);
+                    }}
+                    title={editingRoundId ? "Edit Funding Round" : "Add / Simulate Funding Round"}
+                    size="3xl"
+                >
+                    <FundingRoundForm
+                        onSubmit={handlePreviewRound} 
+                        onCancel={() => {
+                            setIsFundingRoundModalOpen(false);
+                            setNewRoundDataForConfirmation(null);
+                            setEditingRoundId(null);
+                        }}
+                        initialData={newRoundDataForConfirmation} 
+                        existingShareholdersCount={shareholders.filter(s => s.id !== EMPLOYEE_POOL_ID).length}
+                        totalExistingShares={currentCapTable?.totalSharesOverall || 0}
+                    />
+                </Modal>
+             </>
+        )}
 
-        <Modal
+        <Modal // Preview modal can still be shown in read-only if triggered by a deep link or future feature, but confirmation is blocked
             isOpen={isRoundPreviewModalOpen}
             onClose={() => {
                 setIsRoundPreviewModalOpen(false);
                 setPreviewCapTableData(null);
-                // setNewRoundDataForConfirmation(null); // Keep data for potential confirmation
             }}
             title={`Preview: ${previewCapTableData?.roundPreviewDetails?.name || 'New Round Impact'}`}
             size="5xl"
@@ -599,26 +608,28 @@ const App: React.FC = () => {
                         snapshot={previewCapTableData}
                         title="Cap Table After This Round (Preview)"
                         isPreview={true}
+                        isReadOnly={isReadOnly} // Pass read-only to preview as well
                     />
                     <div className="flex justify-end space-x-3 pt-4">
                         <button
                             type="button"
                             onClick={() => {
                                 setIsRoundPreviewModalOpen(false);
-                                // Optionally re-open form if user wants to edit more:
-                                // setIsFundingRoundModalOpen(true); 
+                                // if (!isReadOnly) setIsFundingRoundModalOpen(true); // Optionally re-open form if not read-only
                             }}
                             className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-300"
                         >
-                            Back to Edit Round
+                           {isReadOnly ? "Close Preview" : "Back to Edit Round"}
                         </button>
-                        <button
-                            type="button"
-                            onClick={handleConfirmAndAddRound}
-                            className="px-6 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                        >
-                            Confirm & Add Round to CapTable
-                        </button>
+                        {!isReadOnly && (
+                            <button
+                                type="button"
+                                onClick={handleConfirmAndAddRound}
+                                className="px-6 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                            >
+                                Confirm & Add Round to CapTable
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { CapTableSnapshot, ProcessedShareholder, ShareClass, ShareholderCategory } from './types';
 
@@ -8,6 +9,7 @@ interface CapTableDisplayProps {
   onEditShareholder?: (shareholderId: string) => void;
   onDeleteShareholder?: (shareholderId: string) => void;
   isShareholderManagementEnabled?: boolean;
+  isReadOnly?: boolean; // New prop
 }
 
 const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
@@ -17,6 +19,7 @@ const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
   onEditShareholder,
   onDeleteShareholder,
   isShareholderManagementEnabled = false,
+  isReadOnly = false, // Default to false
 }) => {
   if (!snapshot) {
     return (
@@ -26,6 +29,8 @@ const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
         </div>
     );
   }
+
+  const showActionsColumn = isShareholderManagementEnabled && !isPreview && !isReadOnly;
 
   return (
     <div className={`bg-white p-4 sm:p-6 rounded-xl shadow-xl ${isPreview ? 'ring-2 ring-indigo-500' : ''}`}>
@@ -42,7 +47,7 @@ const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
               <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-slate-700">Ownership %</th>
               <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-slate-700">Voting Power</th>
               <th scope="col" className="px-4 py-3.5 text-right text-sm font-semibold text-slate-700">Voting %</th>
-              {isShareholderManagementEnabled && !isPreview && (
+              {showActionsColumn && (
                 <th scope="col" className="px-4 py-3.5 text-center text-sm font-semibold text-slate-700">Actions</th>
               )}
             </tr>
@@ -58,9 +63,9 @@ const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right">{sh.ownershipPercentage.toFixed(2)}%</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right">{sh.votingPower.toLocaleString()}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right">{sh.votingPercentage.toFixed(2)}%</td>
-                {isShareholderManagementEnabled && !isPreview && (
+                {showActionsColumn && (
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                    {sh.category !== ShareholderCategory.EMPLOYEE_POOL && ( // Prevent editing/deleting system-managed ESOP
+                    {sh.category !== ShareholderCategory.EMPLOYEE_POOL && ( 
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-center space-x-2">
                         <button 
                             onClick={() => onEditShareholder && onEditShareholder(sh.id)} 
@@ -90,7 +95,7 @@ const CapTableDisplay: React.FC<CapTableDisplayProps> = ({
               <td className="px-4 py-3 text-sm font-bold text-slate-800 text-right">100.00%</td>
               <td className="px-4 py-3 text-sm font-bold text-slate-800 text-right">{snapshot.totalVotingPower.toLocaleString()}</td>
               <td className="px-4 py-3 text-sm font-bold text-slate-800 text-right">100.00%</td>
-              {isShareholderManagementEnabled && !isPreview && <td className="px-4 py-3"></td>}
+              {showActionsColumn && <td className="px-4 py-3"></td>}
             </tr>
           </tfoot>
         </table>

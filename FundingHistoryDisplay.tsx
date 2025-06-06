@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { FundingRound } from './types';
 
@@ -5,9 +6,10 @@ interface FundingHistoryDisplayProps {
   rounds: FundingRound[];
   onEdit: (roundId: string) => void;
   onDelete: (roundId: string) => void;
+  isReadOnly?: boolean; // New prop
 }
 
-const FundingHistoryDisplay: React.FC<FundingHistoryDisplayProps> = ({ rounds, onEdit, onDelete }) => {
+const FundingHistoryDisplay: React.FC<FundingHistoryDisplayProps> = ({ rounds, onEdit, onDelete, isReadOnly = false }) => {
   if (rounds.length === 0) {
     return <p className="text-slate-500 text-center py-4">No funding rounds recorded yet.</p>;
   }
@@ -36,7 +38,7 @@ const FundingHistoryDisplay: React.FC<FundingHistoryDisplayProps> = ({ rounds, o
               <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right">{round.postMoneyValuation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 text-right">{(round.optionPoolIncreaseShares || 0).toLocaleString()}</td>
               <td className="px-4 py-3 whitespace-nowrap text-sm text-center">
-                {index === rounds.length - 1 && ( // Only enable for the latest round
+                {!isReadOnly && index === rounds.length - 1 && ( 
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-center space-x-2">
                     <button 
                         onClick={() => onEdit(round.id)} 
@@ -52,7 +54,7 @@ const FundingHistoryDisplay: React.FC<FundingHistoryDisplayProps> = ({ rounds, o
                     </button>
                   </div>
                 )}
-                 {index !== rounds.length - 1 && (
+                 {(isReadOnly || index !== rounds.length - 1) && (
                      <span className="text-xs text-slate-400">History</span>
                  )}
               </td>
